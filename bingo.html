@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bingo</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@700&display=swap">
+    <style>
+
+		@font-face {
+            font-family: 'Caramel';
+            src: url('Caramel.ttf') format('truetype');
+			font-weight: normal;
+			font-style: normal;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: rgba(40, 44, 52, 0.8);
+            font-family: Arial, sans-serif;
+            flex-direction: column;
+            margin: 0;
+        }
+        .title-container, .bingo-container {
+            width: 80vw;
+            max-width: 800px;
+            box-sizing: border-box;
+        }
+        .title-container {
+            background: linear-gradient(90deg, rgba(102, 126, 234, 0.5), rgba(118, 75, 162, 0.5));
+            padding: 20px 10px 14px;
+            border-radius: 8px 8px 0 0;
+            text-align: center;
+            color: white;
+            font-family: 'Caramel', sans-serif;
+            letter-spacing: 4px;
+            font-size: 2.5em;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+        }
+        .title-container img {
+            max-height: 2.0em;
+            width: auto;
+        }
+        .bingo-container {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            background: linear-gradient(90deg, rgba(102, 126, 234, 0.5), rgba(118, 75, 162, 0.5));
+            background-size: cover;
+            padding: 10px;
+            border-radius: 0 0 8px 8px;
+            background-color: rgba(40, 44, 52, 0.5);
+            /* BEIBEHALTEN: Das Layout bleibt hier so wie im Original, was zu Überlappungen führen kann. */
+        }
+        .bingo-item {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            cursor: pointer;
+            transition: background 0.3s, text-decoration 0.3s;
+            /* Font-size wird jetzt dynamisch über CSS-Variable gesetzt */
+            font-size: var(--bingo-item-font-size);
+            color: white;
+            font-weight: bold;
+            padding: 20px;
+            box-sizing: border-box;
+            height: 0;
+            padding-bottom: 100%;
+            position: relative;
+            user-select: none;
+            /* Wichtig: overflow: visible; wie im Original, wenn Texte überlappen sollen.
+               Wenn sie ABGESCHNITTEN werden sollen: overflow: hidden; */
+            /* Wenn du das Überlappen vermeiden und stattdessen abschneiden willst, füge hier overflow: hidden; hinzu.
+               Im Moment ist es bewusst nicht drin, um dem Original so nah wie möglich zu kommen. */
+        }
+        .bingo-item span {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            /* KEINE zusätzlichen CSS-Regeln hier, um 1:1 dem Original zu entsprechen.
+               Dies bedeutet, dass Texte überlappen werden, wenn sie zu lang sind. */
+        }
+        .bingo-item.clicked {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        .bingo-item.clicked span {
+            color: black;
+        }
+        .bingo-item.gold {
+            background: gold !important;
+        }
+        @keyframes fadeInOut {
+            0% { opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+        .fade {
+            animation: fadeInOut 3s ease-in-out forwards;
+        }
+    </style>
+</head>
+<body>
+
+<div class="title-container">
+    H I L F&nbsp;&nbsp;M I R
+</div>
+<div class="bingo-container" id="bingoContainer">
+</div>
+
+<audio id="bingoSound" src="bingo.mp3"></audio>
+
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.4.0/dist/confetti.browser.min.js"></script>
+<script>
+
+    let currentConfig = {};
+
+    async function loadConfigAndTexts() {
+        try {
+            const configResponse = await fetch('config.json');
+            currentConfig = await configResponse.json();
+
+            document.querySelector('.title-container').innerText = currentConfig.title || 'BINGO';
+            document.querySelector('.title-container').style.background = `linear-gradient(90deg, ${currentConfig.color}88, ${currentConfig.color}44)`;
+            document.querySelector('.bingo-container').style.background = `linear-gradient(90deg, ${currentConfig.color}55, ${currentConfig.color}33)`;
+
+            // Lade die Schriftgröße aus config.json, sonst Standardwert 1.5
+            const fontSizeEm = currentConfig.fontSize !== undefined ? parseFloat(currentConfig.fontSize) : 1.5;
+            // Setze die CSS-Variable auf dem HTML-Root-Element
+            document.documentElement.style.setProperty('--bingo-item-font-size', fontSizeEm + 'em');
+
+            const textsResponse = await fetch('bingo-texts.json');
+            const texts = await textsResponse.json();
+            renderBingoItems(texts);
+
+        } catch (error) {
+            console.error("Fehler beim Laden der Konfiguration oder Texte:", error);
+            document.querySelector('.title-container').innerText = 'BINGO (Fehler)';
+            document.documentElement.style.setProperty('--bingo-item-font-size', '1.5em'); // Fallback Schriftgröße
+            renderBingoItems({});
+        }
+    }
+
+    let celebratedRows = new Set();
+    let celebratedCols = new Set();
+    let celebratedDiagonals = new Set();
+
+    async function loadTexts() {
+        const response = await fetch('bingo-texts.json');
+        const texts = await response.json();
+        return texts;
+    }
+
+    function shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+    }
+
+    function createBingoItem(text, index) {
+        const item = document.createElement('div');
+        item.classList.add('bingo-item');
+        item.setAttribute('data-index', index);
+        item.setAttribute('onclick', 'toggleItem(this)');
+        const span = document.createElement('span');
+        span.innerHTML = text;
+        item.appendChild(span);
+        return item;
+    }
+
+    async function renderBingoItems(texts) {
+        const allTexts = Object.values(texts);
+        const nonEmptyTexts = allTexts.filter(text => text.trim() !== '');
+        const shuffledTexts = shuffleArray(nonEmptyTexts).slice(0, 25);
+        const bingoContainer = document.getElementById('bingoContainer');
+        shuffledTexts.forEach((text, index) => {
+            const bingoItem = createBingoItem(text, index);
+            bingoContainer.appendChild(bingoItem);
+        });
+    }
+
+    function toggleItem(element) {
+        element.classList.toggle('clicked');
+        checkBingo();
+    }
+
+    function checkBingo() {
+        const items = document.querySelectorAll('.bingo-item');
+        const grid = Array.from({ length: 5 }, () => Array(5).fill(null));
+        let celebrationTriggered = false;
+
+        items.forEach(item => {
+            const index = parseInt(item.getAttribute('data-index'));
+            const row = Math.floor(index / 5);
+            const col = index % 5;
+            grid[row][col] = item.classList.contains('clicked') ? item : null;
+        });
+
+        items.forEach(item => item.classList.remove('gold'));
+
+        for (let i = 0; i < 5; i++) {
+            if (grid[i].every(cell => cell !== null)) {
+                grid[i].forEach(cell => cell.classList.add('gold'));
+                if (!celebratedRows.has(i)) {
+                    celebratedRows.add(i);
+                    celebrationTriggered = true;
+                }
+            } else {
+                celebratedRows.delete(i);
+            }
+        }
+
+        for (let j = 0; j < 5; j++) {
+            if (grid.map(row => row[j]).every(cell => cell !== null)) {
+                grid.forEach(row => row[j].classList.add('gold'));
+                if (!celebratedCols.has(j)) {
+                    celebratedCols.add(j);
+                    celebrationTriggered = true;
+                }
+            } else {
+                celebratedCols.delete(j);
+            }
+        }
+
+        let diag1 = true;
+        let diag2 = true;
+
+        for (let i = 0; i < 5; i++) {
+            if (grid[i][i] === null) {
+                diag1 = false;
+            }
+            if (grid[i][4 - i] === null) {
+                diag2 = false;
+            }
+        }
+
+        if (diag1) {
+            for (let i = 0; i < 5; i++) {
+                grid[i][i].classList.add('gold');
+            }
+            if (!celebratedDiagonals.has('diag1')) {
+                celebratedDiagonals.add('diag1');
+                celebrationTriggered = true;
+            }
+        } else {
+            celebratedDiagonals.delete('diag1');
+        }
+
+        if (diag2) {
+            for (let i = 0; i < 5; i++) {
+                grid[i][4 - i].classList.add('gold');
+            }
+            if (!celebratedDiagonals.has('diag2')) {
+                celebratedDiagonals.add('diag2');
+                celebrationTriggered = true;
+            }
+        } else {
+            celebratedDiagonals.delete('diag2');
+        }
+
+        if (celebrationTriggered) {
+            triggerCelebration();
+        }
+    }
+
+    function triggerCelebration() {
+        const audio = document.getElementById('bingoSound');
+        audio.play();
+
+        confetti({
+            particleCount: 200,
+            spread: 70,
+            origin: { y: 0.6 }
+        });
+    }
+
+    loadConfigAndTexts();
+</script>
+
+</body>
+</html>

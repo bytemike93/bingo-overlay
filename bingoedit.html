@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bingo Texte Bearbeiten</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            background-color: rgba(40, 44, 52, 0.8);
+            font-family: Arial, sans-serif;
+            color: white;
+            margin: 0;
+            padding: 20px 0;
+        }
+        .form-container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 8px;
+            width: 80vw;
+            max-width: 800px;
+            margin: 20px 0;
+        }
+        .form-item {
+            margin-bottom: 15px;
+        }
+        .form-item label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-item input[type="text"],
+        .form-item input[type="number"] {
+            width: calc(100% - 16px);
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            background-color: rgba(0, 0, 0, 0.2);
+            color: white;
+            box-sizing: border-box;
+        }
+        .form-item input[type="range"] {
+            width: calc(100% - 70px);
+            -webkit-appearance: none;
+            height: 10px;
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.2);
+            outline: none;
+            opacity: 0.7;
+            transition: opacity .2s;
+            vertical-align: middle;
+        }
+        .form-item input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #4CAF50;
+            cursor: pointer;
+        }
+        .form-item input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #4CAF50;
+            cursor: pointer;
+        }
+        .form-item .slider-output {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .form-item .slider-output input[type="number"] {
+            width: 60px;
+            text-align: center;
+        }
+
+        .form-item button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            background-color: rgba(102, 126, 234, 0.8);
+            color: white;
+            font-size: 1em;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .form-item button:hover {
+            background-color: rgba(102, 126, 234, 1);
+        }
+        h1 {
+            margin-top: 0;
+            text-align: center;
+        }
+        p {
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 0.9em;
+            color: rgba(255, 255, 255, 0.8);
+        }
+    </style>
+</head>
+<body>
+
+<div class="form-container">
+    <h1>Bingo Texte und Einstellungen bearbeiten</h1>
+    <p>Umbrüche können mit "-" oder mit <code>&lt;br&gt;</code> eingefügt werden.</p>
+    <form id="bingoForm">
+        <div class="form-item">
+            <label for="fontSizeSlider">Grundschriftgröße der Bingo-Kästchen (em):</label>
+            <div class="slider-output">
+                <input type="range" id="fontSizeSlider" min="0.8" max="2.5" step="0.1" value="1.5">
+                <input type="number" id="fontSizeNumber" min="0.8" max="2.5" step="0.1" value="1.5">
+                <span>em</span>
+            </div>
+        </div>
+        </form>
+    <div class="form-item" style="text-align: center;">
+        <button type="button" onclick="saveAllSettings()">Einstellungen speichern</button>
+        <button type="button" onclick="window.location.href='bingo.html'">Zum Spiel</button>
+    </div>
+</div>
+
+<script>
+    const bingoForm = document.getElementById('bingoForm');
+    const fontSizeSlider = document.getElementById('fontSizeSlider');
+    const fontSizeNumber = document.getElementById('fontSizeNumber');
+
+    let currentConfig = {};
+
+    async function loadSettings() {
+        const textsResponse = await fetch('bingo-texts.json');
+        const texts = await textsResponse.json();
+
+        const configResponse = await fetch('config.json');
+        currentConfig = await configResponse.json();
+
+        // Die Schleife geht jetzt bis 50 für die Textfelder
+        for (let i = 0; i < 50; i++) {
+            const key = `item${i + 1}`;
+            const formItem = createFormItem(key, texts[key] || '');
+            bingoForm.appendChild(formItem);
+        }
+
+        if (currentConfig.fontSize !== undefined) {
+            const val = parseFloat(currentConfig.fontSize);
+            fontSizeSlider.value = val;
+            fontSizeNumber.value = val.toFixed(1);
+        } else {
+            fontSizeSlider.value = 1.5;
+            fontSizeNumber.value = 1.5;
+        }
+    }
+
+    function createFormItem(id, text = '') {
+        const formItem = document.createElement('div');
+        formItem.classList.add('form-item');
+
+        const safeText = text.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+        formItem.innerHTML = `
+            <label for="${id}">Text für ${id.replace('item', 'Item ')}:</label>
+            <input type="text" id="${id}" name="${id}" value="${safeText}">
+        `;
+        return formItem;
+    }
+
+    fontSizeSlider.addEventListener('input', () => {
+        fontSizeNumber.value = parseFloat(fontSizeSlider.value).toFixed(1);
+    });
+
+    fontSizeNumber.addEventListener('input', () => {
+        let value = parseFloat(fontSizeNumber.value);
+        if (isNaN(value)) value = parseFloat(fontSizeSlider.min);
+        if (value < parseFloat(fontSizeSlider.min)) value = parseFloat(fontSizeSlider.min);
+        if (value > parseFloat(fontSizeSlider.max)) value = parseFloat(fontSizeSlider.max);
+
+        fontSizeSlider.value = value;
+        fontSizeNumber.value = value.toFixed(1);
+    });
+
+    async function saveAllSettings() {
+        const formData = new FormData(bingoForm);
+        const textsToSave = {};
+        // Die Schleife geht jetzt bis 50 für die Textfelder
+        for (let i = 0; i < 50; i++) {
+            const key = `item${i + 1}`;
+            const value = formData.get(key);
+            if (value && value.trim()) {
+                textsToSave[key] = value;
+            } else {
+                textsToSave[key] = "";
+            }
+        }
+
+        const configToSave = { ...currentConfig };
+        configToSave.fontSize = parseFloat(fontSizeSlider.value);
+
+        try {
+            const response = await fetch('save-texts.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ texts: textsToSave, config: configToSave })
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                alert('Einstellungen erfolgreich gespeichert!');
+                currentConfig = configToSave;
+            } else {
+                alert('Fehler beim Speichern der Einstellungen: ' + result.message);
+            }
+        } catch (error) {
+            alert('Fehler beim Speichern: ' + error.message);
+        }
+    }
+
+    loadSettings();
+</script>
+
+</body>
+</html>
